@@ -10,5 +10,12 @@ export default function SessionProvider({
   children: React.ReactNode;
   session: Session | null;
 }) {
-  return <NextAuthSessionProvider session={session}>{children}</NextAuthSessionProvider>;
+  // Sous un sous-chemin (BASE_PATH, ex: /fanta), next-auth ne detecte pas
+  // automatiquement le prefixe cote client : on le lui passe explicitement.
+  const basePath = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api/auth`;
+  return (
+    <NextAuthSessionProvider session={session} basePath={basePath}>
+      {children}
+    </NextAuthSessionProvider>
+  );
 }

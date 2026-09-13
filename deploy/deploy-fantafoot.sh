@@ -18,6 +18,7 @@ REPO_URL="https://github.com/yyg31/fantafoot.git"
 BRANCH="claude/fantafoot-website-tl9d59"
 APP_DIR="/opt/fantafoot"
 DOMAIN=""            # laissez vide pour servir directement sur l'IP du serveur
+BASE_PATH="/fanta"   # sous-chemin de l'app (ex: http://IP/fanta) ; "" pour servir a la racine
 APP_PORT="3000"
 SERVICE_USER="${SUDO_USER:-$USER}"
 
@@ -45,6 +46,9 @@ if ! command -v pm2 >/dev/null 2>&1; then
   sudo npm install -g pm2
 fi
 
+HOST_PART="${DOMAIN:-$(curl -s -4 ifconfig.me)}"
+PUBLIC_URL="http://${HOST_PART}${BASE_PATH}"
+
 log "Clonage / mise a jour du depot ($BRANCH)"
 if [ -d "$APP_DIR/.git" ]; then
   sudo git -C "$APP_DIR" fetch origin "$BRANCH"
@@ -62,11 +66,12 @@ log "Configuration de l'environnement (.env)"
 if [ ! -f .env ]; then
   ADMIN_PASSWORD="$(openssl rand -base64 15)"
   NEXTAUTH_SECRET="$(openssl rand -base64 32)"
-  PUBLIC_URL="http://$( [ -n "$DOMAIN" ] && echo "$DOMAIN" || curl -s -4 ifconfig.me )"
   cat > .env <<EOF
 DATABASE_URL="file:./prod.db"
 NEXTAUTH_SECRET="$NEXTAUTH_SECRET"
 NEXTAUTH_URL="$PUBLIC_URL"
+BASE_PATH="$BASE_PATH"
+NEXT_PUBLIC_BASE_PATH="$BASE_PATH"
 ADMIN_EMAIL="admin@fantafoot.local"
 ADMIN_PASSWORD="$ADMIN_PASSWORD"
 EOF
@@ -95,12 +100,25 @@ sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u "$SERVICE_USER" --hp "$HOME"
 
 log "Configuration Nginx (reverse proxy)"
 NGINX_SERVER_NAME="${DOMAIN:-_}"
-sudo tee /etc/nginx/sites-available/fantafoot > /dev/null <<EOF
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name $NGINX_SERVER_NAME;
+if [ -n "$BASE_PATH" ]; then
+  NGINX_LOCATIONS="
+    location = / {
+        return 302 ${BASE_PATH}/;
+    }
 
+    location ^~ ${BASE_PATH} {
+        proxy_pass http://127.0.0.1:$APP_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+    }"
+else
+  NGINX_LOCATIONS="
     location / {
         proxy_pass http://127.0.0.1:$APP_PORT;
         proxy_http_version 1.1;
@@ -111,7 +129,14 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
-    }
+    }"
+fi
+sudo tee /etc/nginx/sites-available/fantafoot > /dev/null <<EOF
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name $NGINX_SERVER_NAME;
+$NGINX_LOCATIONS
 }
 EOF
 sudo ln -sf /etc/nginx/sites-available/fantafoot /etc/nginx/sites-enabled/fantafoot
@@ -139,7 +164,6 @@ if [ -n "$DOMAIN" ]; then
     warn "Certbot a echoue - verifiez que $DOMAIN pointe bien vers ce serveur puis relancez : sudo certbot --nginx -d $DOMAIN"
 fi
 
-PUBLIC_URL="http://$( [ -n "$DOMAIN" ] && echo "$DOMAIN" || curl -s -4 ifconfig.me )"
 log "Termine ! Fantafoot est en ligne : $PUBLIC_URL"
 echo "Voir les logs      : pm2 logs fantafoot"
 echo "Redemarrer l'app   : pm2 restart fantafoot"
