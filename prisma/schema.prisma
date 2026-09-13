@@ -29,6 +29,7 @@ model User {
   squad        SquadPlayer[]
   lineups      Lineup[]
   matchdayScores ClubMatchdayScore[]
+  forumMessages ForumMessage[]
 }
 
 // Base des joueurs de Ligue 1
@@ -162,4 +163,17 @@ model ClubMatchdayScore {
 
   @@unique([userId, matchdayId])
   @@index([userId])
+}
+
+// Forum libre, sans moderation : tout membre (ou l'admin) peut poster.
+// Les messages les plus recents s'affichent en premier.
+model ForumMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
 }

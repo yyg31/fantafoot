@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
-import { SQUAD_SIZE } from "@/lib/constants";
+import { SQUAD_SIZE, SQUAD_POSITION_LIMITS, positionLabel } from "@/lib/constants";
 import type { ActionState } from "@/lib/action-state";
 
 export async function addPlayerToSquad(playerId: string): Promise<ActionState> {
@@ -15,12 +15,20 @@ export async function addPlayerToSquad(playerId: string): Promise<ActionState> {
   const player = await prisma.player.findUnique({ where: { id: playerId } });
   if (!player || !player.active) return { error: "Joueur introuvable." };
 
-  const squad = await prisma.squadPlayer.findMany({ where: { userId: user.id } });
+  const squad = await prisma.squadPlayer.findMany({ where: { userId: user.id }, include: { player: true } });
   if (squad.some((s) => s.playerId === playerId)) {
     return { error: "Ce joueur est deja dans votre effectif." };
   }
   if (squad.length >= SQUAD_SIZE) {
     return { error: `Votre effectif compte deja ${SQUAD_SIZE} joueurs.` };
+  }
+
+  const positionLimit = SQUAD_POSITION_LIMITS[player.position as keyof typeof SQUAD_POSITION_LIMITS];
+  const positionCount = squad.filter((s) => s.player.position === player.position).length;
+  if (positionCount >= positionLimit) {
+    return {
+      error: `Limite atteinte pour le poste ${positionLabel(player.position)} (maximum ${positionLimit}).`,
+    };
   }
 
   const spent = squad.reduce((sum, s) => sum + s.purchasePrice, 0);

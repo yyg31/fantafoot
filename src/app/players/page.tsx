@@ -27,7 +27,12 @@ export default async function PlayersPage({
 
   return (
     <div>
-      <h1 className="mb-4 text-2xl font-bold">Base des joueurs - Ligue 1</h1>
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Base des joueurs - Ligue 1</h1>
+        <a href="/api/players/export" className="btn-secondary">
+          Exporter en CSV
+        </a>
+      </div>
 
       <form className="card mb-6 flex flex-wrap items-end gap-3">
         <div>

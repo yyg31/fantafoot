@@ -7,6 +7,14 @@ export type Role = (typeof ROLES)[number];
 
 export const SQUAD_SIZE = 22;
 
+/** Nombre maximum de joueurs par poste dans l'effectif de 22 (le total fait bien 22). */
+export const SQUAD_POSITION_LIMITS: Record<"GK" | "DEF" | "MID" | "FWD", number> = {
+  GK: 3,
+  DEF: 7,
+  MID: 7,
+  FWD: 5,
+};
+
 export const POSITIONS = ["GK", "DEF", "MID", "FWD"] as const;
 export type Position = (typeof POSITIONS)[number];
 

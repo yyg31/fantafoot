@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
-import { Position, POSITION_LABELS, SQUAD_SIZE, positionLabel } from "@/lib/constants";
+import { Position, POSITION_LABELS, SQUAD_SIZE, SQUAD_POSITION_LIMITS, positionLabel } from "@/lib/constants";
 import AddButton from "@/components/squad/AddButton";
 import RemoveButton from "@/components/squad/RemoveButton";
 import LockButton from "@/components/squad/LockButton";
@@ -84,7 +84,9 @@ export default async function SquadPage({
 
       <div className="card">
         <p className="mb-2 text-sm font-medium text-slate-600">
-          Repartition : {bySlots.GK} gardien(s), {bySlots.DEF} defenseur(s), {bySlots.MID} milieu(x), {bySlots.FWD} attaquant(s)
+          Repartition (max par poste) : {bySlots.GK} / {SQUAD_POSITION_LIMITS.GK} gardien(s),{" "}
+          {bySlots.DEF} / {SQUAD_POSITION_LIMITS.DEF} defenseur(s), {bySlots.MID} / {SQUAD_POSITION_LIMITS.MID}{" "}
+          milieu(x), {bySlots.FWD} / {SQUAD_POSITION_LIMITS.FWD} attaquant(s)
         </p>
         {isLocked ? (
           <p className="rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-800">
@@ -139,7 +141,12 @@ export default async function SquadPage({
 
       {!isLocked && (
         <section>
-          <h2 className="mb-2 text-lg font-semibold">Recruter des joueurs</h2>
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Recruter des joueurs</h2>
+            <a href="/api/players/export" className="btn-secondary">
+              Exporter la liste en CSV
+            </a>
+          </div>
           <form className="card mb-4 flex flex-wrap items-end gap-3">
             <div>
               <label className="label">Recherche</label>
@@ -187,6 +194,8 @@ export default async function SquadPage({
                 {candidates.map((p) => {
                   const owned = ownedIds.has(p.id);
                   const affordable = remaining >= p.currentValue;
+                  const posKey = p.position as keyof typeof SQUAD_POSITION_LIMITS;
+                  const positionFull = bySlots[posKey] >= SQUAD_POSITION_LIMITS[posKey];
                   return (
                     <tr key={p.id}>
                       <td className="font-medium">{p.name}</td>
@@ -196,6 +205,8 @@ export default async function SquadPage({
                       <td>
                         {owned ? (
                           <span className="text-xs text-slate-400">Deja recrute</span>
+                        ) : positionFull ? (
+                          <span className="text-xs text-slate-400">Limite de poste atteinte</span>
                         ) : (
                           <AddButton playerId={p.id} disabled={isFull || !affordable} />
                         )}

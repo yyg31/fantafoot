@@ -13,6 +13,7 @@ export default async function Navbar() {
         { href: "/squad", label: "Mon effectif" },
         { href: "/lineup", label: "Composition" },
         { href: "/ranking", label: "Classement" },
+        { href: "/forum", label: "Forum" },
         ...(session.user.role === "ADMIN" ? [{ href: "/admin", label: "Admin" }] : []),
       ]
     : [
