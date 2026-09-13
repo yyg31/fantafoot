@@ -1,0 +1,165 @@
+// Schema Fantafoot
+// Pour la production, changer le provider en "postgresql" et pointer
+// DATABASE_URL vers une base Postgres (ex: Vercel Postgres, Supabase, ...).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// SQLite ne supporte pas les enums Prisma natifs : Role ("MEMBER" | "ADMIN")
+// et Position ("GK" | "DEF" | "MID" | "FWD") sont donc de simples String,
+// valides en code applicatif via src/lib/constants.ts.
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  clubName     String
+  role         String   @default("MEMBER")
+  createdAt    DateTime @default(now())
+
+  // Budget total alloue en debut de saison (en M EUR)
+  budget       Float    @default(220)
+
+  squad        SquadPlayer[]
+  lineups      Lineup[]
+  matchdayScores ClubMatchdayScore[]
+}
+
+// Base des joueurs de Ligue 1
+model Player {
+  id            String   @id @default(cuid())
+  name          String
+  position      String
+  l1Club        String   // vrai club de Ligue 1 du joueur
+  startValue    Float    // valeur de depart (M EUR), fixee par l'admin
+  currentValue  Float    // valeur actualisee (M EUR)
+  totalPoints   Float    @default(0) // total de points cumules sur la saison
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  ownedBy       SquadPlayer[]
+  lineupSlots   LineupSlot[]
+  stats         PlayerMatchdayStat[]
+
+  @@index([l1Club])
+  @@index([position])
+}
+
+// Effectif definitif de 22 joueurs d'un membre (une fois verrouille, plus modifiable)
+model SquadPlayer {
+  id            String   @id @default(cuid())
+  userId        String
+  playerId      String
+  purchasePrice Float    // valeur du joueur au moment de l'achat
+  createdAt     DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, playerId])
+  @@index([userId])
+}
+
+// Verrou de l'effectif : une fois pose, l'effectif de 22 est definitif
+model SquadLock {
+  userId    String   @id
+  lockedAt  DateTime @default(now())
+}
+
+// Une journee de championnat (1 a 34)
+model Matchday {
+  id         String    @id @default(cuid())
+  number     Int       @unique
+  deadline   DateTime
+  finalized  Boolean   @default(false)
+  finalizedAt DateTime?
+
+  lineups        Lineup[]
+  lineupSlots    LineupSlot[]
+  playerStats    PlayerMatchdayStat[]
+  teamResults    TeamMatchdayResult[]
+  clubScores     ClubMatchdayScore[]
+}
+
+// La composition d'un membre pour une journee donnee (11 joueurs)
+model Lineup {
+  id          String   @id @default(cuid())
+  userId      String
+  matchdayId  String
+  submittedAt DateTime @default(now())
+  auto        Boolean  @default(false) // true si copiee automatiquement (deadline manquee)
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matchday Matchday     @relation(fields: [matchdayId], references: [id], onDelete: Cascade)
+  slots    LineupSlot[]
+
+  @@unique([userId, matchdayId])
+}
+
+model LineupSlot {
+  id         String   @id @default(cuid())
+  lineupId   String
+  matchdayId String
+  playerId   String
+
+  lineup   Lineup   @relation(fields: [lineupId], references: [id], onDelete: Cascade)
+  matchday Matchday @relation(fields: [matchdayId], references: [id], onDelete: Cascade)
+  player   Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([lineupId, playerId])
+}
+
+// Statistiques brutes d'un joueur pour une journee, saisies par l'admin.
+// Les points sont calcules automatiquement a partir de ces stats (voir src/lib/points.ts)
+model PlayerMatchdayStat {
+  id               String   @id @default(cuid())
+  playerId         String
+  matchdayId       String
+  goals            Int      @default(0)
+  penaltyGoals     Int      @default(0) // sous-ensemble de goals, marques sur penalty
+  assists          Int      @default(0)
+  yellowCards      Int      @default(0)
+  redCards         Int      @default(0)
+  goalsConceded    Int?     // uniquement pertinent pour un gardien (peut differer du resultat d'equipe si remplace en cours de match)
+  points           Float    @default(0) // calcule et fige a la finalisation de la journee
+
+  player   Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  matchday Matchday @relation(fields: [matchdayId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, matchdayId])
+}
+
+// Resultat d'equipe (buts encaisses) pour une journee : sert a determiner les
+// clean-sheets des gardiens/defenseurs qui n'ont pas de stat individuelle saisie.
+model TeamMatchdayResult {
+  id            String   @id @default(cuid())
+  l1Club        String
+  matchdayId    String
+  goalsConceded Int
+
+  matchday Matchday @relation(fields: [matchdayId], references: [id], onDelete: Cascade)
+
+  @@unique([l1Club, matchdayId])
+}
+
+// Score d'un club (membre) pour une journee : somme des points des 11 titulaires.
+// Calcule et fige a la finalisation de la journee.
+model ClubMatchdayScore {
+  id         String   @id @default(cuid())
+  userId     String
+  matchdayId String
+  points     Float
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matchday Matchday @relation(fields: [matchdayId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, matchdayId])
+  @@index([userId])
+}
